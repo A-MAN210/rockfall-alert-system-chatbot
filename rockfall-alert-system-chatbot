@@ -1,0 +1,136 @@
+import streamlit as st
+import openai
+
+# Set your OpenAI API key here
+openai.api_key = "YOUR_OPENAI_API_KEY"
+
+# Mock backend data for demonstration (replace with real API calls)
+AREA_DATA = {
+    "quarry site 4": {
+        "risk_level": "Moderate-High",
+        "probability": 0.62,
+        "timeframe": "48 hours",
+        "key_factors": {
+            "Slope saturation": "91%",
+            "Freeze-thaw cycles": 3
+        },
+        "sensor_data": {
+            "Vibration": "0.03 g",
+            "Tilt": "1.7 degrees",
+            "Humidity": "78%",
+            "Rainfall": "6 mm"
+        },
+        "slope_analysis": "Slope stability index is 0.78, indicating moderate risk of failure under current conditions."
+    },
+    "sr-99": {
+        "risk_level": "High",
+        "probability": 0.85,
+        "timeframe": "24 hours",
+        "key_factors": {
+            "Pore water pressure increase": "40% in last 12 hours",
+            "Lidar displacement": "2 cm on joint set J2",
+            "Seismic activity": "1.5 std dev above 30-day baseline"
+        },
+        "sensor_data": {
+            "Vibration": "0.05 g",
+            "Tilt": "2.1 degrees",
+            "Humidity": "82%",
+            "Rainfall": "10 mm"
+        },
+        "slope_analysis": "Critical displacement detected on known failure plane J2; urgent mitigation recommended."
+    }
+}
+
+# Helper functions to format responses
+def format_summary(area):
+    data = AREA_DATA[area]
+    return (
+        f"The current risk level for {area.title()} is {data['risk_level']}. "
+        f"We calculate a {int(data['probability']*100)}% probability of a rockfall event in the next {data['timeframe']}.\n\n"
+        f"Key Factors:\n" +
+        "\n".join([f"- {k}: {v}" for k, v in data["key_factors"].items()]) +
+        "\n\nWould you like to see the detailed sensor data or the slope stability analysis?"
+    )
+
+def format_sensor_data(area):
+    data = AREA_DATA[area]["sensor_data"]
+    return "Detailed Sensor Data:\n" + "\n".join([f"- {k}: {v}" for k, v in data.items()])
+
+def format_slope_analysis(area):
+    return "Slope Stability Analysis:\n" + AREA_DATA[area]["slope_analysis"]
+
+def format_risk_report(area):
+    return (
+        f"I've generated the preliminary risk mitigation report for {area.title()}. "
+        "It includes the full data analysis, recommended exclusion zones, and a draft alert notification."
+    )
+
+# Chatbot logic with layered answers and follow-ups
+def chatbot_response(user_input, chat_history):
+    user_input_lower = user_input.lower()
+
+    # Check if user asks about a specific area
+    for area in AREA_DATA.keys():
+        if area in user_input_lower:
+            # Check if user wants detailed info
+            if any(keyword in user_input_lower for keyword in ["sensor", "sensor data", "detailed data"]):
+                return format_sensor_data(area)
+            elif any(keyword in user_input_lower for keyword in ["slope", "stability", "analysis"]):
+                return format_slope_analysis(area)
+            elif any(keyword in user_input_lower for keyword in ["report", "risk mitigation", "mitigation"]):
+                return format_risk_report(area)
+            else:
+                # Provide layered summary with prompt for deeper dive
+                return format_summary(area)
+
+    # If no specific area mentioned, fallback to GPT for general questions
+    prompt = f"""
+    You are an expert assistant for a Rockfall Detection, Prediction, and Prevention System.
+    Answer the user's questions based on the following context:
+
+    - The system uses drones with AI object detection (YOLOv8) to monitor slopes.
+    - IoT sensors detect micro-movements (vibration, tilt).
+    - Weather and geological data improve prediction accuracy.
+    - The system provides real-time alerts and visualization via a dashboard.
+    - Target users include mining companies, construction firms, and disaster management.
+
+    Conversation history:
+    {chat_history}
+
+    User question: {user_input}
+    """
+
+    response = openai.Completion.create(
+        engine="text-davinci-003",
+        prompt=prompt,
+        max_tokens=200,
+        temperature=0.5,
+        n=1,
+        stop=None,
+    )
+    return response.choices[0].text.strip()
+
+# Streamlit UI
+st.title("Advanced Rockfall Detection & Prevention Chatbot")
+
+st.markdown("""
+Ask about specific areas (e.g., 'Quarry Site 4', 'SR-99') to get layered risk summaries.
+You can request detailed sensor data, slope analysis, or risk mitigation reports.
+""")
+
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = ""
+
+user_input = st.text_input("Your question:")
+
+if st.button("Send") and user_input:
+    # Append user input to chat history
+    st.session_state.chat_history += f":User  {user_input}\n"
+
+    answer = chatbot_response(user_input, st.session_state.chat_history)
+    st.session_state.chat_history += f"Bot: {answer}\n"
+
+    st.markdown(f"**Bot:** {answer}")
+
+# Optional: show chat history for debugging
+# st.text_area("Chat History", st.session_state.chat_history, height=300)
